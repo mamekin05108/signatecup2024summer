@@ -1,0 +1,1283 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": [],
+      "name": "light_20240827.ipynb",
+      "authorship_tag": "ABX9TyMG1ksMCxuf+2xx1VJe4vot",
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/mamekin05108/signatecup2024summer/blob/main/lightgbm_20240829_010654_011\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 1,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "bvlrPdPg7-h_",
+        "outputId": "0d88e98d-264c-46cc-f63b-88f9bd986a05"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Mounted at /content/drive\n"
+          ]
+        }
+      ],
+      "source": [
+        "from google.colab import drive\n",
+        "drive.mount('/content/drive')"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "import pandas as pd\n",
+        "import numpy as np\n",
+        "import matplotlib.pyplot as plt\n",
+        "import seaborn as sns\n",
+        "import warnings\n",
+        "import re\n",
+        "import copy\n",
+        "import lightgbm as lgb\n",
+        "from sklearn import metrics\n",
+        "from sklearn.metrics import f1_score, roc_auc_score\n",
+        "from sklearn.model_selection import StratifiedKFold\n",
+        "\n",
+        "# warningsを非表示にする\n",
+        "warnings.filterwarnings(\"ignore\")"
+      ],
+      "metadata": {
+        "id": "2iIgCK4U8VFz",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "outputId": "259b86e8-6014-4b85-9d4c-faa93b74bef4"
+      },
+      "execution_count": 2,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stderr",
+          "text": [
+            "/usr/local/lib/python3.10/dist-packages/dask/dataframe/__init__.py:42: FutureWarning: \n",
+            "Dask dataframe query planning is disabled because dask-expr is not installed.\n",
+            "\n",
+            "You can install it with `pip install dask[dataframe]` or `conda install dask`.\n",
+            "This will raise in a future version.\n",
+            "\n",
+            "  warnings.warn(msg, FutureWarning)\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "\n",
+        "# !pip install catboost"
+      ],
+      "metadata": {
+        "id": "pvhM-14h-u8v"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "pd.set_option('display.max_columns',100)\n",
+        "pd.set_option('display.max_rows',100)"
+      ],
+      "metadata": {
+        "id": "Ja5UEEfDHt1j"
+      },
+      "execution_count": 3,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "\n",
+        "from sklearn.calibration import calibration_curve, CalibratedClassifierCV\n",
+        "from sklearn.metrics import roc_auc_score\n",
+        "#from catboost import CatBoostClassifier, Pool"
+      ],
+      "metadata": {
+        "id": "oRfT4bm6-0gv"
+      },
+      "execution_count": 4,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "df_train = pd.read_csv(\"/content/drive/MyDrive/Signate/2024summer/fdata2/df_train_allnum7.csv\")\n",
+        "df_test = pd.read_csv(\"/content/drive/MyDrive/Signate/2024summer/fdata2/df_test_allnum7.csv\")\n",
+        "ss = pd.read_csv(\"/content/drive/MyDrive/Signate/2024summer/data/sample_submit.csv\", header=None)"
+      ],
+      "metadata": {
+        "id": "t_Gmoblh8Y3H"
+      },
+      "execution_count": 84,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "df_train.head()"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 244
+        },
+        "id": "QyPkdV-F_lfh",
+        "outputId": "46c57045-ff89-4a29-eba8-3168ce85bb50"
+      },
+      "execution_count": 63,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "   id       Age  DurationOfPitch  Gender  NumberOfPersonVisiting  \\\n",
+              "0   0  1.149839         0.065271       0               -1.908669   \n",
+              "1   1  1.767425        -0.078771       0               -1.908669   \n",
+              "2   2  0.223460        -0.654942       1               -1.908669   \n",
+              "3   3 -0.188264         0.497399       1               -1.908669   \n",
+              "4   4  0.943977         0.353356       1               -1.908669   \n",
+              "\n",
+              "   NumberOfFollowups  PreferredPropertyStar  NumberOfTrips  Passport  \\\n",
+              "0           0.360305                    3.0       1.033297         1   \n",
+              "1           0.360305                    3.0      -0.695839         1   \n",
+              "2          -0.743578                    3.0       0.456918         0   \n",
+              "3          -0.743578                    4.0      -1.272218         0   \n",
+              "4          -0.743578                    4.0       0.456918         0   \n",
+              "\n",
+              "   PitchSatisfactionScore  MonthlyIncome  ProdTaken  OwnCar  NumberOfChildren  \\\n",
+              "0                       4      -1.334334        1.0       0         -1.300936   \n",
+              "1                       4       0.647770        0.0       1         -1.300936   \n",
+              "2                       4      -1.015239        1.0       0         -1.300936   \n",
+              "3                       5      -0.374678        0.0       1         -1.300936   \n",
+              "4                       4      -1.274701        1.0       1         -1.300936   \n",
+              "\n",
+              "   HasChildren  TypeofContact_Company Invited  TypeofContact_Self Enquiry  \\\n",
+              "0            0                            0.0                         1.0   \n",
+              "1            0                            1.0                         0.0   \n",
+              "2            0                            0.0                         1.0   \n",
+              "3            0                            0.0                         1.0   \n",
+              "4            0                            1.0                         0.0   \n",
+              "\n",
+              "   TypeofContact_nan  CityTier_1  CityTier_2  CityTier_3  \\\n",
+              "0                0.0         0.0         1.0         0.0   \n",
+              "1                0.0         1.0         0.0         0.0   \n",
+              "2                0.0         1.0         0.0         0.0   \n",
+              "3                0.0         0.0         1.0         0.0   \n",
+              "4                0.0         0.0         0.0         1.0   \n",
+              "\n",
+              "   Occupation_Large Business  Occupation_Salaried  Occupation_Small Business  \\\n",
+              "0                        1.0                  0.0                        0.0   \n",
+              "1                        0.0                  1.0                        0.0   \n",
+              "2                        1.0                  0.0                        0.0   \n",
+              "3                        0.0                  0.0                        1.0   \n",
+              "4                        0.0                  0.0                        1.0   \n",
+              "\n",
+              "   ProductPitched_BASIC  ProductPitched_DELUXE  ProductPitched_KING  \\\n",
+              "0                   1.0                    0.0                  0.0   \n",
+              "1                   0.0                    0.0                  0.0   \n",
+              "2                   1.0                    0.0                  0.0   \n",
+              "3                   0.0                    0.0                  0.0   \n",
+              "4                   1.0                    0.0                  0.0   \n",
+              "\n",
+              "   ProductPitched_STANDARD  ProductPitched_SUPERDELUXE  Designation_AVP  \\\n",
+              "0                      0.0                         0.0              0.0   \n",
+              "1                      1.0                         0.0              0.0   \n",
+              "2                      0.0                         0.0              0.0   \n",
+              "3                      1.0                         0.0              0.0   \n",
+              "4                      0.0                         0.0              0.0   \n",
+              "\n",
+              "   Designation_Executive  Designation_Manager  Designation_Senior Manager  \\\n",
+              "0                    1.0                  0.0                         0.0   \n",
+              "1                    0.0                  0.0                         1.0   \n",
+              "2                    1.0                  0.0                         0.0   \n",
+              "3                    0.0                  0.0                         1.0   \n",
+              "4                    1.0                  0.0                         0.0   \n",
+              "\n",
+              "   Designation_VP  MaritalStatus_未婚  MaritalStatus_独身  MaritalStatus_結婚  \\\n",
+              "0             0.0               1.0               0.0               0.0   \n",
+              "1             0.0               0.0               0.0               0.0   \n",
+              "2             0.0               0.0               0.0               1.0   \n",
+              "3             0.0               0.0               0.0               0.0   \n",
+              "4             0.0               0.0               1.0               0.0   \n",
+              "\n",
+              "   MaritalStatus_離婚  \n",
+              "0               0.0  \n",
+              "1               1.0  \n",
+              "2               0.0  \n",
+              "3               1.0  \n",
+              "4               0.0  "
+            ],
+            "text/html": [
+              "\n",
+              "  <div id=\"df-ec24bd3c-bcee-4fd3-9604-502be14cf570\" class=\"colab-df-container\">\n",
+              "    <div>\n",
+              "<style scoped>\n",
+              "    .dataframe tbody tr th:only-of-type {\n",
+              "        vertical-align: middle;\n",
+              "    }\n",
+              "\n",
+              "    .dataframe tbody tr th {\n",
+              "        vertical-align: top;\n",
+              "    }\n",
+              "\n",
+              "    .dataframe thead th {\n",
+              "        text-align: right;\n",
+              "    }\n",
+              "</style>\n",
+              "<table border=\"1\" class=\"dataframe\">\n",
+              "  <thead>\n",
+              "    <tr style=\"text-align: right;\">\n",
+              "      <th></th>\n",
+              "      <th>id</th>\n",
+              "      <th>Age</th>\n",
+              "      <th>DurationOfPitch</th>\n",
+              "      <th>Gender</th>\n",
+              "      <th>NumberOfPersonVisiting</th>\n",
+              "      <th>NumberOfFollowups</th>\n",
+              "      <th>PreferredPropertyStar</th>\n",
+              "      <th>NumberOfTrips</th>\n",
+              "      <th>Passport</th>\n",
+              "      <th>PitchSatisfactionScore</th>\n",
+              "      <th>MonthlyIncome</th>\n",
+              "      <th>ProdTaken</th>\n",
+              "      <th>OwnCar</th>\n",
+              "      <th>NumberOfChildren</th>\n",
+              "      <th>HasChildren</th>\n",
+              "      <th>TypeofContact_Company Invited</th>\n",
+              "      <th>TypeofContact_Self Enquiry</th>\n",
+              "      <th>TypeofContact_nan</th>\n",
+              "      <th>CityTier_1</th>\n",
+              "      <th>CityTier_2</th>\n",
+              "      <th>CityTier_3</th>\n",
+              "      <th>Occupation_Large Business</th>\n",
+              "      <th>Occupation_Salaried</th>\n",
+              "      <th>Occupation_Small Business</th>\n",
+              "      <th>ProductPitched_BASIC</th>\n",
+              "      <th>ProductPitched_DELUXE</th>\n",
+              "      <th>ProductPitched_KING</th>\n",
+              "      <th>ProductPitched_STANDARD</th>\n",
+              "      <th>ProductPitched_SUPERDELUXE</th>\n",
+              "      <th>Designation_AVP</th>\n",
+              "      <th>Designation_Executive</th>\n",
+              "      <th>Designation_Manager</th>\n",
+              "      <th>Designation_Senior Manager</th>\n",
+              "      <th>Designation_VP</th>\n",
+              "      <th>MaritalStatus_未婚</th>\n",
+              "      <th>MaritalStatus_独身</th>\n",
+              "      <th>MaritalStatus_結婚</th>\n",
+              "      <th>MaritalStatus_離婚</th>\n",
+              "    </tr>\n",
+              "  </thead>\n",
+              "  <tbody>\n",
+              "    <tr>\n",
+              "      <th>0</th>\n",
+              "      <td>0</td>\n",
+              "      <td>1.149839</td>\n",
+              "      <td>0.065271</td>\n",
+              "      <td>0</td>\n",
+              "      <td>-1.908669</td>\n",
+              "      <td>0.360305</td>\n",
+              "      <td>3.0</td>\n",
+              "      <td>1.033297</td>\n",
+              "      <td>1</td>\n",
+              "      <td>4</td>\n",
+              "      <td>-1.334334</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0</td>\n",
+              "      <td>-1.300936</td>\n",
+              "      <td>0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>1</th>\n",
+              "      <td>1</td>\n",
+              "      <td>1.767425</td>\n",
+              "      <td>-0.078771</td>\n",
+              "      <td>0</td>\n",
+              "      <td>-1.908669</td>\n",
+              "      <td>0.360305</td>\n",
+              "      <td>3.0</td>\n",
+              "      <td>-0.695839</td>\n",
+              "      <td>1</td>\n",
+              "      <td>4</td>\n",
+              "      <td>0.647770</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1</td>\n",
+              "      <td>-1.300936</td>\n",
+              "      <td>0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>2</th>\n",
+              "      <td>2</td>\n",
+              "      <td>0.223460</td>\n",
+              "      <td>-0.654942</td>\n",
+              "      <td>1</td>\n",
+              "      <td>-1.908669</td>\n",
+              "      <td>-0.743578</td>\n",
+              "      <td>3.0</td>\n",
+              "      <td>0.456918</td>\n",
+              "      <td>0</td>\n",
+              "      <td>4</td>\n",
+              "      <td>-1.015239</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0</td>\n",
+              "      <td>-1.300936</td>\n",
+              "      <td>0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>3</th>\n",
+              "      <td>3</td>\n",
+              "      <td>-0.188264</td>\n",
+              "      <td>0.497399</td>\n",
+              "      <td>1</td>\n",
+              "      <td>-1.908669</td>\n",
+              "      <td>-0.743578</td>\n",
+              "      <td>4.0</td>\n",
+              "      <td>-1.272218</td>\n",
+              "      <td>0</td>\n",
+              "      <td>5</td>\n",
+              "      <td>-0.374678</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1</td>\n",
+              "      <td>-1.300936</td>\n",
+              "      <td>0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>4</th>\n",
+              "      <td>4</td>\n",
+              "      <td>0.943977</td>\n",
+              "      <td>0.353356</td>\n",
+              "      <td>1</td>\n",
+              "      <td>-1.908669</td>\n",
+              "      <td>-0.743578</td>\n",
+              "      <td>4.0</td>\n",
+              "      <td>0.456918</td>\n",
+              "      <td>0</td>\n",
+              "      <td>4</td>\n",
+              "      <td>-1.274701</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>1</td>\n",
+              "      <td>-1.300936</td>\n",
+              "      <td>0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>1.0</td>\n",
+              "      <td>0.0</td>\n",
+              "      <td>0.0</td>\n",
+              "    </tr>\n",
+              "  </tbody>\n",
+              "</table>\n",
+              "</div>\n",
+              "    <div class=\"colab-df-buttons\">\n",
+              "\n",
+              "  <div class=\"colab-df-container\">\n",
+              "    <button class=\"colab-df-convert\" onclick=\"convertToInteractive('df-ec24bd3c-bcee-4fd3-9604-502be14cf570')\"\n",
+              "            title=\"Convert this dataframe to an interactive table.\"\n",
+              "            style=\"display:none;\">\n",
+              "\n",
+              "  <svg xmlns=\"http://www.w3.org/2000/svg\" height=\"24px\" viewBox=\"0 -960 960 960\">\n",
+              "    <path d=\"M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z\"/>\n",
+              "  </svg>\n",
+              "    </button>\n",
+              "\n",
+              "  <style>\n",
+              "    .colab-df-container {\n",
+              "      display:flex;\n",
+              "      gap: 12px;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-convert {\n",
+              "      background-color: #E8F0FE;\n",
+              "      border: none;\n",
+              "      border-radius: 50%;\n",
+              "      cursor: pointer;\n",
+              "      display: none;\n",
+              "      fill: #1967D2;\n",
+              "      height: 32px;\n",
+              "      padding: 0 0 0 0;\n",
+              "      width: 32px;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-convert:hover {\n",
+              "      background-color: #E2EBFA;\n",
+              "      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);\n",
+              "      fill: #174EA6;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-buttons div {\n",
+              "      margin-bottom: 4px;\n",
+              "    }\n",
+              "\n",
+              "    [theme=dark] .colab-df-convert {\n",
+              "      background-color: #3B4455;\n",
+              "      fill: #D2E3FC;\n",
+              "    }\n",
+              "\n",
+              "    [theme=dark] .colab-df-convert:hover {\n",
+              "      background-color: #434B5C;\n",
+              "      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);\n",
+              "      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));\n",
+              "      fill: #FFFFFF;\n",
+              "    }\n",
+              "  </style>\n",
+              "\n",
+              "    <script>\n",
+              "      const buttonEl =\n",
+              "        document.querySelector('#df-ec24bd3c-bcee-4fd3-9604-502be14cf570 button.colab-df-convert');\n",
+              "      buttonEl.style.display =\n",
+              "        google.colab.kernel.accessAllowed ? 'block' : 'none';\n",
+              "\n",
+              "      async function convertToInteractive(key) {\n",
+              "        const element = document.querySelector('#df-ec24bd3c-bcee-4fd3-9604-502be14cf570');\n",
+              "        const dataTable =\n",
+              "          await google.colab.kernel.invokeFunction('convertToInteractive',\n",
+              "                                                    [key], {});\n",
+              "        if (!dataTable) return;\n",
+              "\n",
+              "        const docLinkHtml = 'Like what you see? Visit the ' +\n",
+              "          '<a target=\"_blank\" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'\n",
+              "          + ' to learn more about interactive tables.';\n",
+              "        element.innerHTML = '';\n",
+              "        dataTable['output_type'] = 'display_data';\n",
+              "        await google.colab.output.renderOutput(dataTable, element);\n",
+              "        const docLink = document.createElement('div');\n",
+              "        docLink.innerHTML = docLinkHtml;\n",
+              "        element.appendChild(docLink);\n",
+              "      }\n",
+              "    </script>\n",
+              "  </div>\n",
+              "\n",
+              "\n",
+              "<div id=\"df-c564b653-0ffd-4288-91cf-e39d39f8ecd4\">\n",
+              "  <button class=\"colab-df-quickchart\" onclick=\"quickchart('df-c564b653-0ffd-4288-91cf-e39d39f8ecd4')\"\n",
+              "            title=\"Suggest charts\"\n",
+              "            style=\"display:none;\">\n",
+              "\n",
+              "<svg xmlns=\"http://www.w3.org/2000/svg\" height=\"24px\"viewBox=\"0 0 24 24\"\n",
+              "     width=\"24px\">\n",
+              "    <g>\n",
+              "        <path d=\"M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z\"/>\n",
+              "    </g>\n",
+              "</svg>\n",
+              "  </button>\n",
+              "\n",
+              "<style>\n",
+              "  .colab-df-quickchart {\n",
+              "      --bg-color: #E8F0FE;\n",
+              "      --fill-color: #1967D2;\n",
+              "      --hover-bg-color: #E2EBFA;\n",
+              "      --hover-fill-color: #174EA6;\n",
+              "      --disabled-fill-color: #AAA;\n",
+              "      --disabled-bg-color: #DDD;\n",
+              "  }\n",
+              "\n",
+              "  [theme=dark] .colab-df-quickchart {\n",
+              "      --bg-color: #3B4455;\n",
+              "      --fill-color: #D2E3FC;\n",
+              "      --hover-bg-color: #434B5C;\n",
+              "      --hover-fill-color: #FFFFFF;\n",
+              "      --disabled-bg-color: #3B4455;\n",
+              "      --disabled-fill-color: #666;\n",
+              "  }\n",
+              "\n",
+              "  .colab-df-quickchart {\n",
+              "    background-color: var(--bg-color);\n",
+              "    border: none;\n",
+              "    border-radius: 50%;\n",
+              "    cursor: pointer;\n",
+              "    display: none;\n",
+              "    fill: var(--fill-color);\n",
+              "    height: 32px;\n",
+              "    padding: 0;\n",
+              "    width: 32px;\n",
+              "  }\n",
+              "\n",
+              "  .colab-df-quickchart:hover {\n",
+              "    background-color: var(--hover-bg-color);\n",
+              "    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);\n",
+              "    fill: var(--button-hover-fill-color);\n",
+              "  }\n",
+              "\n",
+              "  .colab-df-quickchart-complete:disabled,\n",
+              "  .colab-df-quickchart-complete:disabled:hover {\n",
+              "    background-color: var(--disabled-bg-color);\n",
+              "    fill: var(--disabled-fill-color);\n",
+              "    box-shadow: none;\n",
+              "  }\n",
+              "\n",
+              "  .colab-df-spinner {\n",
+              "    border: 2px solid var(--fill-color);\n",
+              "    border-color: transparent;\n",
+              "    border-bottom-color: var(--fill-color);\n",
+              "    animation:\n",
+              "      spin 1s steps(1) infinite;\n",
+              "  }\n",
+              "\n",
+              "  @keyframes spin {\n",
+              "    0% {\n",
+              "      border-color: transparent;\n",
+              "      border-bottom-color: var(--fill-color);\n",
+              "      border-left-color: var(--fill-color);\n",
+              "    }\n",
+              "    20% {\n",
+              "      border-color: transparent;\n",
+              "      border-left-color: var(--fill-color);\n",
+              "      border-top-color: var(--fill-color);\n",
+              "    }\n",
+              "    30% {\n",
+              "      border-color: transparent;\n",
+              "      border-left-color: var(--fill-color);\n",
+              "      border-top-color: var(--fill-color);\n",
+              "      border-right-color: var(--fill-color);\n",
+              "    }\n",
+              "    40% {\n",
+              "      border-color: transparent;\n",
+              "      border-right-color: var(--fill-color);\n",
+              "      border-top-color: var(--fill-color);\n",
+              "    }\n",
+              "    60% {\n",
+              "      border-color: transparent;\n",
+              "      border-right-color: var(--fill-color);\n",
+              "    }\n",
+              "    80% {\n",
+              "      border-color: transparent;\n",
+              "      border-right-color: var(--fill-color);\n",
+              "      border-bottom-color: var(--fill-color);\n",
+              "    }\n",
+              "    90% {\n",
+              "      border-color: transparent;\n",
+              "      border-bottom-color: var(--fill-color);\n",
+              "    }\n",
+              "  }\n",
+              "</style>\n",
+              "\n",
+              "  <script>\n",
+              "    async function quickchart(key) {\n",
+              "      const quickchartButtonEl =\n",
+              "        document.querySelector('#' + key + ' button');\n",
+              "      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.\n",
+              "      quickchartButtonEl.classList.add('colab-df-spinner');\n",
+              "      try {\n",
+              "        const charts = await google.colab.kernel.invokeFunction(\n",
+              "            'suggestCharts', [key], {});\n",
+              "      } catch (error) {\n",
+              "        console.error('Error during call to suggestCharts:', error);\n",
+              "      }\n",
+              "      quickchartButtonEl.classList.remove('colab-df-spinner');\n",
+              "      quickchartButtonEl.classList.add('colab-df-quickchart-complete');\n",
+              "    }\n",
+              "    (() => {\n",
+              "      let quickchartButtonEl =\n",
+              "        document.querySelector('#df-c564b653-0ffd-4288-91cf-e39d39f8ecd4 button');\n",
+              "      quickchartButtonEl.style.display =\n",
+              "        google.colab.kernel.accessAllowed ? 'block' : 'none';\n",
+              "    })();\n",
+              "  </script>\n",
+              "</div>\n",
+              "\n",
+              "    </div>\n",
+              "  </div>\n"
+            ],
+            "application/vnd.google.colaboratory.intrinsic+json": {
+              "type": "dataframe",
+              "variable_name": "df_train"
+            }
+          },
+          "metadata": {},
+          "execution_count": 63
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "source": [],
+      "metadata": {
+        "id": "27h0A8rrBEUZ"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Config cell\n",
+        "target = \"ProdTaken\""
+      ],
+      "metadata": {
+        "id": "chhVV9ed_Yjt"
+      },
+      "execution_count": 85,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "\n",
+        "# カラム名の変更マッピング\n",
+        "column_mapping = {\n",
+        "    'Designation_Senior Manager': 'Designation_Senior_Manager',\n",
+        "    'TypeofContact_Company Invited': 'TypeofContact_Company_Invited',\n",
+        "    'TypeofContact_Self Enquiry': 'TypeofContact_Self_Enquiry',\n",
+        "    'Occupation_Large Business': 'Occupation_Large_Business',\n",
+        "    'Occupation_Small Business': 'Occupation_Small_Business',\n",
+        "}\n",
+        "df_train.rename(columns=column_mapping, inplace=True)\n",
+        "df_test.rename(columns=column_mapping, inplace=True)"
+      ],
+      "metadata": {
+        "id": "3jbUlSivwKr6"
+      },
+      "execution_count": 86,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Age列を対数変換して置き換え\n",
+        "#df_train['Age'] = np.log(df_train['Age'] + 1)\n",
+        "#df_test['Age'] = np.log(df_test['Age'] + 1)"
+      ],
+      "metadata": {
+        "id": "N-OyZg1hjkK_"
+      },
+      "execution_count": 77,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "#df_train['MonthlyIncome'] = np.log(df_train['MonthlyIncome'] + 1)\n",
+        "#df_test['MonthlyIncome'] = np.log(df_test['MonthlyIncome'] + 1)"
+      ],
+      "metadata": {
+        "id": "Nq13I0Ttj8Ym"
+      },
+      "execution_count": 67,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "default_categorical_features = ['TypeofContact', 'CityTier', 'Occupation', 'Gender', 'ProductPitched', 'PreferredPropertyStar',\n",
+        "                                'Passport', 'PitchSatisfactionScore', 'Designation', 'MaritalStatus'\n",
+        "                                'NumberOfPersonVisiting','DurationOfPitch','OwnCar'\n",
+        "                                ]\n",
+        "default_numerical_features = ['id','Age', 'MonthlyIncome', 'NumberOfTrips','NumberOfChildren','NumberOfFollowups'\n",
+        "                              ]\n",
+        "added_numerical_features = ['IncomePerAge','IncomePerTrips','FamilySize','PersonTripsProduct','IncomePerFamilySize','IncomePerChild','LogMonthlyIncome','PitchFollowupInteraction','TripsPerAge','FollowupPerTrip']\n",
+        "#numerical_features = default_numerical_features + added_numerical_features\n",
+        "numerical_features = default_numerical_features\n",
+        "\n",
+        "\n",
+        "#特徴量の指定\n",
+        "features = df_train.columns.tolist()\n",
+        "#カテゴリカル特徴量の指定\n",
+        "categorical_features = copy.deepcopy(features)\n",
+        "print(f'numerical_features {numerical_features}')\n",
+        "for i in numerical_features:\n",
+        "    categorical_features.remove(i)\n",
+        "print(f'categorical_features {categorical_features}')\n",
+        "\n",
+        "#学習に使用しない特徴量は以下で除外\n",
+        "RemoveList=[target,'id']\n",
+        "for i in RemoveList:\n",
+        "    if i in numerical_features:\n",
+        "        numerical_features.remove(i)\n",
+        "        features.remove(i)\n",
+        "    elif i in categorical_features:\n",
+        "        categorical_features.remove(i)\n",
+        "        features.remove(i)\n",
+        "    else:\n",
+        "        print(f'{i} is not in numerical_features or categorical_features')\n",
+        "        features.remove(i)\n",
+        "print(f'features for training:{features}')\n",
+        "\n",
+        "for col in categorical_features:\n",
+        "    df_train[col] = df_train[col].astype(int)\n",
+        "    df_test[col] = df_test[col].astype(int)"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "mlcm8YyhA3eB",
+        "outputId": "31c5966c-fa31-4447-9c5f-ea283759476d"
+      },
+      "execution_count": 141,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "numerical_features ['id', 'Age', 'MonthlyIncome', 'NumberOfTrips', 'NumberOfChildren', 'NumberOfFollowups']\n",
+            "categorical_features ['DurationOfPitch', 'Gender', 'NumberOfPersonVisiting', 'PreferredPropertyStar', 'Passport', 'PitchSatisfactionScore', 'ProdTaken', 'OwnCar', 'HasChildren', 'TypeofContact_Company_Invited', 'TypeofContact_Self_Enquiry', 'TypeofContact_nan', 'CityTier_1', 'CityTier_2', 'CityTier_3', 'Occupation_Large_Business', 'Occupation_Salaried', 'Occupation_Small_Business', 'ProductPitched_BASIC', 'ProductPitched_DELUXE', 'ProductPitched_KING', 'ProductPitched_STANDARD', 'ProductPitched_SUPERDELUXE', 'Designation_AVP', 'Designation_Executive', 'Designation_Manager', 'Designation_Senior_Manager', 'Designation_VP', 'MaritalStatus_未婚', 'MaritalStatus_独身', 'MaritalStatus_結婚', 'MaritalStatus_離婚']\n",
+            "features for training:['Age', 'DurationOfPitch', 'Gender', 'NumberOfPersonVisiting', 'NumberOfFollowups', 'PreferredPropertyStar', 'NumberOfTrips', 'Passport', 'PitchSatisfactionScore', 'MonthlyIncome', 'OwnCar', 'NumberOfChildren', 'HasChildren', 'TypeofContact_Company_Invited', 'TypeofContact_Self_Enquiry', 'TypeofContact_nan', 'CityTier_1', 'CityTier_2', 'CityTier_3', 'Occupation_Large_Business', 'Occupation_Salaried', 'Occupation_Small_Business', 'ProductPitched_BASIC', 'ProductPitched_DELUXE', 'ProductPitched_KING', 'ProductPitched_STANDARD', 'ProductPitched_SUPERDELUXE', 'Designation_AVP', 'Designation_Executive', 'Designation_Manager', 'Designation_Senior_Manager', 'Designation_VP', 'MaritalStatus_未婚', 'MaritalStatus_独身', 'MaritalStatus_結婚', 'MaritalStatus_離婚']\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "\n",
+        "for col in df_train.columns:\n",
+        "    print(col, df_train[col].unique())"
+      ],
+      "metadata": {
+        "id": "2Z6cuHeLrS3W",
+        "outputId": "1c3cd8bd-5192-475b-b15f-c0ddbc7c7b80",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        }
+      },
+      "execution_count": 142,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "id [   0    1    2 ... 3486 3487 3488]\n",
+            "Age [ 1.14983915  1.76742539  0.22345978 -0.18826438  0.94397706 -2.04102312\n",
+            "  0.84104602  1.04690811 -0.59998855 -0.80585063  1.25277019  0.73811498\n",
+            "  1.45863227 -1.93809208 -1.42343687 -1.11464375  0.5322529  -0.90878167\n",
+            " -0.49705751 -1.01171271  1.35570123 -1.73223    -0.29119543 -0.08533334\n",
+            "  0.32639082 -0.39412647  2.07621851  0.42932186 -0.70291959  1.97328747\n",
+            "  0.12052874 -1.32050583  1.56156331 -1.83516104  1.87035643 -1.21757479\n",
+            " -1.52636792  0.63518394 -2.14395416  0.0175977   1.66449435  2.17914955\n",
+            " -1.62929896  2.2820806 ]\n",
+            "DurationOfPitch [ 0  1  2 -1  3]\n",
+            "Gender [0 1]\n",
+            "NumberOfPersonVisiting [-1  0  2]\n",
+            "NumberOfFollowups [ 0.36030506 -0.74357778  1.46418791 -2.95134347 -1.84746063         nan\n",
+            "  2.56807075]\n",
+            "PreferredPropertyStar [3 4 5]\n",
+            "NumberOfTrips [ 1.03329656 -0.69583916  0.45691798 -1.27221773  1.60967513 -0.11946059\n",
+            "  2.1860537   2.76243227         nan]\n",
+            "Passport [1 0]\n",
+            "PitchSatisfactionScore [4 5 3 2 1]\n",
+            "MonthlyIncome [-1.33433421  0.64776987 -1.01523875 ... -0.49927562  2.27266871\n",
+            " -1.01464637]\n",
+            "ProdTaken [1. 0.]\n",
+            "OwnCar [0 1]\n",
+            "NumberOfChildren [-1.30093603         nan -0.01710779  1.26672045  2.55054869]\n",
+            "HasChildren [0 1]\n",
+            "TypeofContact_Company_Invited [0 1]\n",
+            "TypeofContact_Self_Enquiry [1 0]\n",
+            "TypeofContact_nan [0 1]\n",
+            "CityTier_1 [0 1]\n",
+            "CityTier_2 [1 0]\n",
+            "CityTier_3 [0 1]\n",
+            "Occupation_Large_Business [1 0]\n",
+            "Occupation_Salaried [0 1]\n",
+            "Occupation_Small_Business [0 1]\n",
+            "ProductPitched_BASIC [1 0]\n",
+            "ProductPitched_DELUXE [0 1]\n",
+            "ProductPitched_KING [0 1]\n",
+            "ProductPitched_STANDARD [0 1]\n",
+            "ProductPitched_SUPERDELUXE [0 1]\n",
+            "Designation_AVP [0 1]\n",
+            "Designation_Executive [1 0]\n",
+            "Designation_Manager [0 1]\n",
+            "Designation_Senior_Manager [0 1]\n",
+            "Designation_VP [0 1]\n",
+            "MaritalStatus_未婚 [1 0]\n",
+            "MaritalStatus_独身 [0 1]\n",
+            "MaritalStatus_結婚 [0 1]\n",
+            "MaritalStatus_離婚 [0 1]\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "cols_category=categorical_features\n",
+        "#cols_category=[]"
+      ],
+      "metadata": {
+        "id": "m95qoIe1CSUz"
+      },
+      "execution_count": 143,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "KWPuJIVvwDgW"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "train_y = df_train[target]\n",
+        "train_x = df_train.drop(target, axis=1)"
+      ],
+      "metadata": {
+        "id": "VYQ31nPEJ-FR"
+      },
+      "execution_count": 144,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "\n",
+        "\n",
+        "params_lgb = {\n",
+        "    'objective': 'binary',\n",
+        "    'metric': 'auc',\n",
+        "    'num_leaves': 30,\n",
+        "    'feature_fraction': 0.4,\n",
+        "    'bagging_fraction': 0.8,\n",
+        "    'bagging_freq': 3,\n",
+        "    'verbose': -1,\n",
+        "    'lambda_l1': 0.80,\n",
+        "    'lambda_l2': 90,\n",
+        "    \"n_estimators\": 3000,\n",
+        "    \"learning_rate\": 0.01,\n",
+        "    \"subsample_freq\": 1,\n",
+        "    \"subsample\": 0.8,\n",
+        "    \"random_seed\": 0,\n",
+        "}"
+      ],
+      "metadata": {
+        "id": "Rv2nSr5T8aPJ"
+      },
+      "execution_count": 145,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "\n",
+        "# f1スコアが最も高くなる点を見つける\n",
+        "from sklearn import metrics\n",
+        "def decide_cutoff(val_y, preds_y_proba):\n",
+        "    mean_f1_list = []\n",
+        "    fpr, tpr, thresholds = metrics.roc_curve(val_y, preds_y_proba)\n",
+        "    for threshold in thresholds:\n",
+        "        preds_y = [1 if prob > threshold else 0 for prob in preds_y_proba]\n",
+        "        #preds_y=preds_y_proba\n",
+        "        mean_f1_list.append(f1_score(val_y, preds_y, average='macro'))\n",
+        "    return np.max(mean_f1_list), thresholds[np.argmax(mean_f1_list)]"
+      ],
+      "metadata": {
+        "id": "1W6fRjos-pCm"
+      },
+      "execution_count": 146,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "list_metrics_auc = []\n",
+        "list_metrics_f1 = []\n",
+        "list_cutoff = []\n",
+        "list_models = []\n",
+        "list_feature_importances = []  # 特徴量重要度を格納するリスト\n",
+        "\n",
+        "cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=999)\n",
+        "for fold, (trn_idx, val_idx) in enumerate(cv.split(train_x, train_y), start=1):\n",
+        "    trn_x = train_x[features].iloc[trn_idx, :]\n",
+        "    trn_y = train_y[trn_idx]\n",
+        "    val_x = train_x[features].iloc[val_idx, :]\n",
+        "    val_y = train_y[val_idx]\n",
+        "\n",
+        "    # LightGBMデータセットの作成\n",
+        "    train_data = lgb.Dataset(data=trn_x, label=trn_y, categorical_feature=cols_category)\n",
+        "    val_data = lgb.Dataset(data=val_x, label=val_y, categorical_feature=cols_category, reference=train_data)\n",
+        "\n",
+        "    model_lgb = lgb.LGBMClassifier(**params_lgb)\n",
+        "    model_lgb.fit(\n",
+        "        trn_x, trn_y,\n",
+        "        eval_set=(val_x, val_y),\n",
+        "        callbacks=[lgb.early_stopping(100, verbose=True)],\n",
+        "        categorical_feature=cols_category,\n",
+        "    )\n",
+        "\n",
+        "    list_models.append(model_lgb)\n",
+        "    preds_y_proba = model_lgb.predict_proba(val_x)[:, 1]\n",
+        "    auc = roc_auc_score(val_y, preds_y_proba)\n",
+        "    f1, threshold = decide_cutoff(val_y, preds_y_proba)\n",
+        "    list_metrics_auc.append(auc)\n",
+        "    list_metrics_f1.append(f1)\n",
+        "    list_cutoff.append(threshold)\n",
+        "    print(f\"Fold: {fold}, AUC: {auc}, F1 score: {f1}, Threshold: {threshold}\")\n",
+        "\n",
+        "    # 特徴量の重要度を追加\n",
+        "    feature_importances = model_lgb.feature_importances_\n",
+        "    list_feature_importances.append(feature_importances)\n",
+        "\n",
+        "# AUCの出力\n",
+        "print(\"Mean AUC:\", np.mean(list_metrics_auc))\n",
+        "print(\"Mean F1 Score:\", np.mean(list_metrics_f1))\n",
+        "print(\"Median Cutoff:\", np.median(list_cutoff))\n",
+        "\n",
+        "# # 特徴量重要度の集計\n",
+        "# mean_feature_importances = np.mean(list_feature_importances, axis=0)\n",
+        "\n",
+        "# # 結果の表示\n",
+        "# feature_importance_df = pd.DataFrame({\n",
+        "#     'Feature': features,\n",
+        "#     'Mean Importance': mean_feature_importances\n",
+        "# }).sort_values(by='Mean Importance', ascending=False)\n",
+        "\n",
+        "# print(\"Feature Importances:\")\n",
+        "# print(feature_importance_df)"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "GW11r17--6Yv",
+        "outputId": "e65c7943-5788-42d7-d6a7-41388cb86598"
+      },
+      "execution_count": 159,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Training until validation scores don't improve for 100 rounds\n",
+            "Early stopping, best iteration is:\n",
+            "[1338]\tvalid_0's auc: 0.820619\n",
+            "Fold: 1, AUC: 0.82061872909699, F1 score: 0.6861863549511071, Threshold: 0.20469768652364542\n",
+            "Training until validation scores don't improve for 100 rounds\n",
+            "Early stopping, best iteration is:\n",
+            "[1369]\tvalid_0's auc: 0.851823\n",
+            "Fold: 2, AUC: 0.8518227424749164, F1 score: 0.7570739445739446, Threshold: 0.30678668755480204\n",
+            "Training until validation scores don't improve for 100 rounds\n",
+            "Early stopping, best iteration is:\n",
+            "[560]\tvalid_0's auc: 0.839497\n",
+            "Fold: 3, AUC: 0.8394968044383738, F1 score: 0.7210848725379515, Threshold: 0.21845252440742557\n",
+            "Training until validation scores don't improve for 100 rounds\n",
+            "Early stopping, best iteration is:\n",
+            "[1626]\tvalid_0's auc: 0.84695\n",
+            "Fold: 4, AUC: 0.8469503043793528, F1 score: 0.7313995302610103, Threshold: 0.28939902981493965\n",
+            "Training until validation scores don't improve for 100 rounds\n",
+            "Early stopping, best iteration is:\n",
+            "[2078]\tvalid_0's auc: 0.851525\n",
+            "Fold: 5, AUC: 0.8515252863078951, F1 score: 0.7266875461512998, Threshold: 0.4525687774368652\n",
+            "Mean AUC: 0.8420827733395055\n",
+            "Mean F1 Score: 0.7244864496950627\n",
+            "Median Cutoff: 0.28939902981493965\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "0.8409536317909646\n",
+        " 0.8298327633511018"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 106
+        },
+        "id": "aFmVMidRT2Bc",
+        "outputId": "14c60243-b524-43a2-f332-934eae44d1f3"
+      },
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "error",
+          "ename": "SyntaxError",
+          "evalue": "invalid syntax (<ipython-input-81-76ea1f53a6c0>, line 1)",
+          "traceback": [
+            "\u001b[0;36m  File \u001b[0;32m\"<ipython-input-81-76ea1f53a6c0>\"\u001b[0;36m, line \u001b[0;32m1\u001b[0m\n\u001b[0;31m    Mean AUC: 0.8420388335705169\u001b[0m\n\u001b[0m         ^\u001b[0m\n\u001b[0;31mSyntaxError\u001b[0m\u001b[0;31m:\u001b[0m invalid syntax\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "EdMFFpTuPG0M"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "Uppd51mbPG2_"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "0.8437365146029495"
+      ],
+      "metadata": {
+        "id": "dQsXqJWDdXKZ"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "SZepdoZDEjma"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "import pickle"
+      ],
+      "metadata": {
+        "id": "aR74EvhLFpSc"
+      },
+      "execution_count": 30,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# モデルを保存する\n",
+        "# 全てのモデルを保存する\n",
+        "for fold, model_cat in enumerate(list_models, start=1):\n",
+        "    with open(f'/content/drive/MyDrive/Signate/2024summer/models/lightgbm_fold_v15{fold}.pkl', 'wb') as f:\n",
+        "        pickle.dump(model_cat, f)"
+      ],
+      "metadata": {
+        "id": "1gtDpO1xGCLL"
+      },
+      "execution_count": 160,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "threshold = np.median(list_cutoff)\n",
+        "preds_y_proba = np.zeros(len(df_test))\n",
+        "for model in list_models:\n",
+        "    preds_y_proba += model.predict_proba(df_test[model.feature_name_])[:, 1] / len(list_models)\n",
+        "    print(f\"Model: {model}, Proba: {preds_y_proba}\")  # 予測確率を表示\n",
+        "preds_y = preds_y_proba\n"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "cg8STlKEHfz0",
+        "outputId": "715d5149-f531-4b49-dba0-9ce4371576d9"
+      },
+      "execution_count": 161,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Model: LGBMClassifier(bagging_fraction=0.8, bagging_freq=3, feature_fraction=0.4,\n",
+            "               lambda_l1=0.8, lambda_l2=90, learning_rate=0.01, metric='auc',\n",
+            "               n_estimators=3000, num_leaves=30, objective='binary',\n",
+            "               random_seed=0, subsample=0.8, subsample_freq=1, verbose=-1), Proba: [0.01885887 0.04577216 0.05318152 ... 0.12949241 0.0447319  0.00311232]\n",
+            "Model: LGBMClassifier(bagging_fraction=0.8, bagging_freq=3, feature_fraction=0.4,\n",
+            "               lambda_l1=0.8, lambda_l2=90, learning_rate=0.01, metric='auc',\n",
+            "               n_estimators=3000, num_leaves=30, objective='binary',\n",
+            "               random_seed=0, subsample=0.8, subsample_freq=1, verbose=-1), Proba: [0.03593158 0.08402361 0.10696497 ... 0.24817614 0.08851884 0.00604613]\n",
+            "Model: LGBMClassifier(bagging_fraction=0.8, bagging_freq=3, feature_fraction=0.4,\n",
+            "               lambda_l1=0.8, lambda_l2=90, learning_rate=0.01, metric='auc',\n",
+            "               n_estimators=3000, num_leaves=30, objective='binary',\n",
+            "               random_seed=0, subsample=0.8, subsample_freq=1, verbose=-1), Proba: [0.05533243 0.11376338 0.16280843 ... 0.35378502 0.13656819 0.0140009 ]\n",
+            "Model: LGBMClassifier(bagging_fraction=0.8, bagging_freq=3, feature_fraction=0.4,\n",
+            "               lambda_l1=0.8, lambda_l2=90, learning_rate=0.01, metric='auc',\n",
+            "               n_estimators=3000, num_leaves=30, objective='binary',\n",
+            "               random_seed=0, subsample=0.8, subsample_freq=1, verbose=-1), Proba: [0.07998502 0.15718414 0.21168207 ... 0.49033452 0.18996292 0.0165267 ]\n",
+            "Model: LGBMClassifier(bagging_fraction=0.8, bagging_freq=3, feature_fraction=0.4,\n",
+            "               lambda_l1=0.8, lambda_l2=90, learning_rate=0.01, metric='auc',\n",
+            "               n_estimators=3000, num_leaves=30, objective='binary',\n",
+            "               random_seed=0, subsample=0.8, subsample_freq=1, verbose=-1), Proba: [0.09994294 0.20557037 0.26473955 ... 0.62578522 0.24280992 0.0184043 ]\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "count = 10"
+      ],
+      "metadata": {
+        "id": "r3jW57TBIfkZ"
+      },
+      "execution_count": 163,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "\n",
+        "from datetime import datetime\n",
+        "import pytz\n",
+        "# カウント変数をインクリメント\n",
+        "count += 1\n",
+        "# 日本時間を取得\n",
+        "japan_tz = pytz.timezone('Asia/Tokyo')\n",
+        "now = datetime.now(japan_tz)\n",
+        "timestamp = now.strftime(\"%Y%m%d_%H%M%S\")\n",
+        "\n",
+        "file_name = f\"/content/drive/MyDrive/Signate/2024summer/lightgbm_{timestamp}_{count:03d}.csv\"\n",
+        "ss[1] = preds_y\n",
+        "ss.to_csv(file_name, header=False, index=False)"
+      ],
+      "metadata": {
+        "id": "ImOkzJPsIfnO"
+      },
+      "execution_count": 164,
+      "outputs": []
+    }
+  ]
+}

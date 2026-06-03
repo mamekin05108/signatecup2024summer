@@ -25,7 +25,9 @@
 | ProdTaken(目的変数)    | 1                      | int64    | 商品の契約状態(0:不成約、1:成約)                                 | 
 
 
-'''
+'
+       <h2>顧客クエリ テスト画面</h2>
+        <p>店番と顧客番号を入力して「JSON作成・保存」を押してください。</p>
 
 <script>
         document.getElementById('queryForm').addEventListener('submit', async function(e) {

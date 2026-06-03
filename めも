@@ -1,57 +1,69 @@
-<script>
-        document.getElementById('queryForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const shopId = document.getElementById('shopId').value;
-            const customerId = document.getElementById('customerId').value;
-            const resultElement = document.getElementById('result');
-            
-            resultElement.textContent = "送信中...";
+# testapp/views.py （デバッグ用にエラーキャッチを強化）
+import json
+import os
+import traceback # エラー詳細取得用
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import render
+from .serializers import CustomerQuerySerializer
 
-            try {
-                const response = await fetch('/api/external-proxy/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: JSON.stringify({
-                        shop_id: shopId,
-                        customer_id: customerId
-                    })
-                });
+def index_view(request):
+    return render(request, "testapp/query_form.html")
 
-                // レスポンスのコンテンツタイプを確認します
-                const contentType = response.headers.get("content-type");
+class ExternalApiProxyView(APIView):
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            # 1. バリデーション
+            serializer = CustomerQuerySerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(
+                    {"error": "入力チェックエラー", "details": serializer.errors},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
                 
-                if (contentType && contentType.includes("application/json")) {
-                    // JSONの場合は綺麗に整形して表示
-                    const data = await response.json();
-                    resultElement.textContent = JSON.stringify(data, null, 4);
-                } else {
-                    // JSON以外（HTMLエラー等）が返ってきた場合はそのままテキストとして表示
-                    const rawText = await response.text();
-                    resultElement.textContent = `【エラーが発生しました】\nステータスコード: ${response.status} ${response.statusText}\n\n${rawText}`;
-                }
-
-            } catch (error) {
-                resultElement.textContent = "通信自体に失敗しました: " + error;
+            validated_data = serializer.validated_data
+            shop_id = validated_data.get("shop_id")
+            customer_id = validated_data.get("customer_id")
+            
+            # 2. リクエストJSONの構築
+            external_request_payload = {
+                "store_code": shop_id,
+                "customer_number": customer_id,
+                "source_system": "DRF-Proxy-Gateway",
             }
-        });
+            
+            # 3. JSONファイル保存
+            save_dir = "saved_requests"
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+                
+            filename = f"{save_dir}/request_{shop_id}_{customer_id}.json"
+            
+            with open(filename, "w", encoding="utf-8") as f:
+                json.dump(external_request_payload, f, ensure_ascii=False, indent=4)
+            
+            # 4. 返却
+            return Response(
+                {
+                    "message": "リクエストJSONの作成と保存が完了しました",
+                    "saved_to": filename,
+                    "created_payload": external_request_payload
+                },
+                status=status.HTTP_200_OK
+            )
 
-        // CSRFトークンを取得する関数
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
-        }
-    </script>
+        except Exception as e:
+            # 万が一Pythonコード内でエラーが発生した場合、その詳細（スタックトレース）をレスポンスに含める
+            error_message = str(e)
+            stack_trace = traceback.format_exc()
+            return Response(
+                {
+                    "error": "Pythonコード実行中にエラーが発生しました（500）",
+                    "exception_type": type(e).__name__,
+                    "message": error_message,
+                    "traceback": stack_trace
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

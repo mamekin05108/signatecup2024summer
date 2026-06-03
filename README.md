@@ -26,6 +26,7 @@
 
 
 '''
+
 <script>
         document.getElementById('queryForm').addEventListener('submit', async function(e) {
             e.preventDefault();

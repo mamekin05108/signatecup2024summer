@@ -26,3 +26,60 @@
 
 
 
+<script>
+        document.getElementById('queryForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const shopId = document.getElementById('shopId').value;
+            const customerId = document.getElementById('customerId').value;
+            const resultElement = document.getElementById('result');
+            
+            resultElement.textContent = "送信中...";
+
+            try {
+                const response = await fetch('/api/external-proxy/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        shop_id: shopId,
+                        customer_id: customerId
+                    })
+                });
+
+                // レスポンスのコンテンツタイプを確認します
+                const contentType = response.headers.get("content-type");
+                
+                if (contentType && contentType.includes("application/json")) {
+                    // JSONの場合は綺麗に整形して表示
+                    const data = await response.json();
+                    resultElement.textContent = JSON.stringify(data, null, 4);
+                } else {
+                    // JSON以外（HTMLエラー等）が返ってきた場合はそのままテキストとして表示
+                    const rawText = await response.text();
+                    resultElement.textContent = `【エラーが発生しました】\nステータスコード: ${response.status} ${response.statusText}\n\n${rawText}`;
+                }
+
+            } catch (error) {
+                resultElement.textContent = "通信自体に失敗しました: " + error;
+            }
+        });
+
+        // CSRFトークンを取得する関数
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    </script>

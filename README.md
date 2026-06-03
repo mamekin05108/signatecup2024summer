@@ -25,7 +25,7 @@
 | ProdTaken(目的変数)    | 1                      | int64    | 商品の契約状態(0:不成約、1:成約)                                 | 
 
 
-
+'''
 <script>
         document.getElementById('queryForm').addEventListener('submit', async function(e) {
             e.preventDefault();

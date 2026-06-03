@@ -30,6 +30,7 @@
  
     """
 """
+"""
 Html
 <!DOCTYPE html>
 <html lang="ja">
@@ -110,4 +111,5 @@ Html
             return cookieValue;
         }
     </script>
+"""
 """

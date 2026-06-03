@@ -1,0 +1,11 @@
+# urls.py
+from django.urls import path
+from .views import ExternalApiProxyView, index_view
+
+urlpatterns = [
+    # 1. 画面を表示するURL
+    path('query-tool/', index_view, name='query_tool'),
+    
+    # 2. 画面からJSONがPOSTされる宛先URL
+    path('api/external-proxy/', ExternalApiProxyView.as_view(), name='external_proxy'),
+]

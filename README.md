@@ -110,4 +110,4 @@ Html
             return cookieValue;
         }
     </script>
-'''
+"""
